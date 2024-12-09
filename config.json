@@ -1,9 +1,12 @@
 {
-	"variable_name": ["UTCI", "MRT"],
 	"variable":{
 		"UTCI": {
-			"dirpath": "",
-			""
+			"dirpath": "/data/d2r/dynamic_data/UTCI",
+			"filename_mask": "UTCI_pytherm_3m_v0.6.0_[YEAR]_[DOY]_[HOUR].tif"
+		},
+		"MRT": {
+			"dirpath": "/data/d2r/dynamic_data/MRT",
+			"filename_mask": "DO_Tmrt_3m_v0.6.0_[YEAR]_[DOY]_[HOUR].tif"
 		}
 	}
 }
