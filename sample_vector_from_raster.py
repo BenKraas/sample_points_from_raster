@@ -6,9 +6,32 @@ from pathlib import Path
 # Third party imports
 import geopandas as gpd
 import rasterio as rio
+from datetime import datetime
+from json import loads
 
 
-def sample_vector_from_raster(raster_path: str|Path, multipoint_path: str|Path, new_column_name: str) -> gpd.GeoDataFrame:
+def main_sampling(varname: str, geometry_path: str, start_date: str, end_date: str) -> gpd.GeoDataFrame:
+	# load config file
+	with open("config.json", "r") as f: config = loads(f.read())
+
+	# assert that varname is in config.varnames
+	assert varname in config["varnames"], f"Variable {varname} not found in config file."
+
+	# start_date and end_date to DateTime objects (YYYYMMDDD)
+	start_date = datetime.strptime(start_date, "%Y%m%d")
+	end_date = datetime.strptime(end_date, "%Y%m%d")
+
+	# get the raster file path
+	raster_path = Path(config["raster_dir"]) / f"{varname}_{start_date.strftime('%Y%m%d')}_{end_date.strftime('%Y%m%d')}.tif"
+
+
+
+
+
+
+
+
+def sample_from_raster(raster_path: str|Path, multipoint_path: str|Path, new_column_name: str) -> gpd.GeoDataFrame:
 	"""
 	Sample raster values from a multipoint file.
 	
@@ -38,11 +61,5 @@ def sample_vector_from_raster(raster_path: str|Path, multipoint_path: str|Path, 
 	
 
 if __name__ == "__main__":
-	raster_path = Path("./data/UTCI_pytherm_3m_v0.6.0_2024_305_15.tif")
-	multipoint_path = Path("./data/network_loc_20240405.geojson")
-
-	gdf = sample_vector_from_raster(raster_path, multipoint_path, "UTCI")
-
-	# save the GeoDataFrame to geojson
-	gdf.to_file("./data/sample.geojson", driver="GeoJSON")
+	# 
 	
