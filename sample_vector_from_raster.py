@@ -1,7 +1,16 @@
 # -*- coding: utf-8 -*-
+"""
+Sample raster values from a vector file to a GeoDataFrame.
+Tailored to D2R project file structure, where raster files are accessed by the script.
 
-# NOTES FOR BK
-# Make yml: conda env export | grep -v "^prefix: " > environment.yml
+Example for single variable:
+    sample_df = SampleVectorFromRaster.sample("varname", "path/to/geometry_file", "YYYYMMDD", "YYYYMMDD")
+
+Example for multiple variables:
+    df_var1 = SampleVectorFromRaster.sample("varname1", "path/to/geometry_file", "YYYYMMDD", "YYYYMMDD")
+    df_var2 = SampleVectorFromRaster.sample("varname2", "path/to/geometry_file", "YYYYMMDD", "YYYYMMDD")
+    df_concat = pd.concat([df_var1, df_var2], ignore_index=True, axis=0)
+"""
 
 # Standard library imports
 from datetime import datetime
@@ -35,16 +44,13 @@ class SampleVectorFromRaster:
             main_sampling("varname", "path/to/geometry_file", "YYYYMMDD", "YYYYMMDD")
 
         Layout of config.json:
-            {
-                "variable": {
-                    "<varname: str>": {
-                        "dirpath": "<raster_dir_path: str>"
-                        "filename_mask": ".*_.*_.*_.*_[YEAR]_[DOY]_[HOUR].tif"
-                        "nan_value": -9999
-                    }
+            "variable": {
+                "<varname: str>": {
+                    "dirpath": "<raster_dir_path: str>"
+                    "filename_mask": ".*_.*_.*_.*_[YEAR]_[DOY]_[HOUR].tif"
+                    "nan_value": -9999
                 }
             }
-
         """
         # load config files
         with open("config.json", "r") as f: config = loads(f.read())
@@ -85,7 +91,7 @@ class SampleVectorFromRaster:
         print(f"Sampling {gdf.shape[0]} points from {len(raster_files_selection)} raster files...")
         for raster_file in raster_files_selection:
             print(f"Sampling raster values from {str(raster_file)}...", end=" ")
-            df = self._d2r_sampling(raster_file, gdf, config["variable"][varname]["nan_value"])
+            df = self._d2r_sampling(raster_file, gdf, varname, config["variable"][varname]["nan_value"])
             print("Done.")
             df_list.append(df)
 
@@ -96,7 +102,7 @@ class SampleVectorFromRaster:
         return final_df_concat
 
     @classmethod
-    def _d2r_sampling(self, raster_path: Path, multipoint_gdf: gpd.GeoDataFrame, nan_value : int=-9999) -> pd.DataFrame:
+    def _d2r_sampling(self, raster_path: Path, multipoint_gdf: gpd.GeoDataFrame, varname: str, nan_value : int=-9999) -> pd.DataFrame:
         """
         Sample raster values from a multipoint file.
         Specific to the D2R project, not intended for general use.
@@ -104,27 +110,34 @@ class SampleVectorFromRaster:
         Parameters:
             raster_path (str|Path): Path to the raster file.
             multipoint_path (str|Path): Path to the multipoint file.
-            new_column_name (str): Name of the new column to be created in the GeoDataFrame. 
-                                This should be descriptive of the raster values being sampled.
-        
+            varname (str): Name of the variable to sample.
+            nan_value (int) [default=-9999]: Real NaN value in the raster file.
+
         Returns:
             gpd.GeoDataFrame: A GeoDataFrame with the sampled values.
 
         Data structure of the GeoDataFrame:
-            | datetime             | varname | val  | filepath            |
-            |----------------------|---------|------|---------------------|
-            | 2024-08-01T00:00:00Z | UTCI    | 30.0 | /path/to/raster.tif |
-            | 2024-08-01T00:00:00Z | UTCI    | 31.0 | /path/to/raster.tif |
-            | 2024-08-01T00:00:00Z | UTCI    | 32.0 | /path/to/raster.tif |
-            | 2024-08-01T00:00:00Z | UTCI    | 33.0 | /path/to/raster.tif |
-            | 2024-08-01T00:00:00Z | UTCI    | 34.0 | /path/to/raster.tif |
+            | lantern_id | datetime             | varname | val  | filename   |
+            |------------|----------------------|---------|------|------------|
+            | 1          | 2021-01-01T00:00:00Z | UTCI    | 30.0 | raster.tif |
+            | 2          | 2021-01-01T00:00:00Z | UTCI    | 31.0 | raster.tif |
+            | 3          | 2021-01-01T00:00:00Z | UTCI    | 32.0 | /path.tif  |
+            | ...        | ...                  | ...     | ...  | ...        |
+            |------------|----------------------|---------|------|------------|
+            lantern_id: ID of the lantern - taken from the multipoint file (LeuchtenNr). # TODO: Will be changed to "NeueLeuNr" which is a consistent ID.
+            datetime: Date and time of the raster file in ISO format.
+            varname: Name of the variable being sampled.
+            val: Sampled value from the raster file.
+            filename: Name of to the raster file.
+
         """
-        # create a new dataframe to store the sampled values
+        # create and populate a new dataframe to store the sampled values
         final_df = pd.DataFrame(index=range(len(multipoint_gdf)))
         final_df["lantern_id"] = multipoint_gdf["LeuchtenNr"]
         final_df["datetime"] = datetime.strptime(raster_path.stem.split("_")[4] + raster_path.stem.split("_")[5] + raster_path.stem.split("_")[6], "%Y%j%H").isoformat() + "Z"
-        final_df["varname"] = raster_path.stem.split("_")[0]
-        # read raster file
+        final_df["varname"] = varname
+        
+        # raster sampling
         with rio.open(raster_path) as src:
             # sample raster values
             coord_list = [(x, y) for x, y in zip(multipoint_gdf.geometry.x, multipoint_gdf.geometry.y)]
@@ -134,20 +147,21 @@ class SampleVectorFromRaster:
             # check for nan values (default determined by arg) and print sum warning
             nan_values = final_df[final_df["val"] == nan_value]
             if len(nan_values) > 0:
-                print(f"\n[WARNING]: Found {len(nan_values)} NaN values in raster file '{raster_path}'. No action taken - continuing...", end=" ")
+                print(f"\n[WARNING]: Found {len(nan_values)} NaN values (literal: {nan_value}) in raster file '{raster_path}'. No action taken - continuing...", end=" ")
 
-        final_df["filepath"] = str(raster_path)
+        final_df["filename"] = str(raster_path.stem)
 
         return final_df
     
     @classmethod
-    def _generic_sampling(self, raster_path: str, vector_gdf: gpd.GeoDataFrame) -> pd.DataFrame:
+    def generic_sample(self, raster_path: str|Path, vector_gdf: str|Path) -> pd.DataFrame:
         """
         Generic sampling function to sample raster values from a vector file.
+        Values are placed in lists to allow for multiple bands in the raster file.
 
         Parameters:
             raster_path (str): Path to the raster file.
-            vector_gdf (gpd.GeoDataFrame): GeoDataFrame with the vector data.
+            vector_gdf (str): Path to the vector file.
 
         Returns:
             pd.DataFrame: DataFrame with the sampled values.
@@ -159,21 +173,27 @@ class SampleVectorFromRaster:
             | [31.0] |
             | [32.0] |
         """
-        final_df = pd.DataFrame(index=range(len(vector_gdf)))
+        # prepare sampling vector file
+        try: gdf = gpd.read_file(vector_gdf)
+        except Exception as e: raise Exception(f"Error reading geometry file: {e}")
+        gdf.dropna(subset=["geometry"], inplace=True) # optional: drop rows with missing geometries
+
+        final_df = pd.DataFrame(index=range(len(gdf)))
+        
         with rio.open(raster_path) as src:
-            coord_list = [(x, y) for x, y in zip(vector_gdf.geometry.x, vector_gdf.geometry.y)]
+            coord_list = [(x, y) for x, y in zip(gdf.geometry.x, gdf.geometry.y)]
             final_df["val"] = [x for x in src.sample(coord_list)]
         
-        # if shape is bigger than 1, warning
-        if len(final_df) > 1:
+        # if shape is bigger than (n, 1), warning
+        if final_df.shape[1] > 1:
             print(f"\n[INFO]: Found {len(final_df)} values in multiband raster file '{raster_path}'. No action taken - continuing...", end=" ")
         
         return final_df
 
 
 if __name__ == "__main__":
-
     df_utci = SampleVectorFromRaster.sample("UTCI", "/home/kraasbx5/network_loc_20240405.geojson", "20240801", "20240801")
     df_mrt = SampleVectorFromRaster.sample("MRT", "/home/kraasbx5/network_loc_20240405.geojson", "20240801", "20240801")
     df_concat = pd.concat([df_utci, df_mrt], ignore_index=True, axis=0)
+    print(f"Final concatenated DataFrame shape: {df_concat.shape}\nHead:\n{df_concat.head()}\n")
     df_concat.to_csv("output.csv", index=False)
