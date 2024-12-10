@@ -61,11 +61,12 @@ class SampleVectorFromRaster:
         # prepare sampling vector file
         try: gdf = gpd.read_file(geometry_path)
         except Exception as e: raise Exception(f"Error reading geometry file: {e}")
-        gdf.dropna(subset=["geometry"], inplace=True) # optional: drop rows with missing geometries
+        gdf.dropna(subset=["geometry"], inplace=True)
+        crs = gdf.crs
 
         # start_date and end_date to DateTime objects (YYYYMMDDD)
         start_date = datetime.strptime(start_date, "%Y%m%d")
-        end_date = datetime.strptime(end_date, "%Y%m%d")
+        end_date = datetime.strptime(end_date, "%Y%m%d").replace(hour=23, minute=59, second=59) # set end_date to end of day
 
         # get all raster files in the directory in the time period
         print(f"Starting sampling for variable '{varname}' in time period {start_date} to {end_date}...")
@@ -91,18 +92,24 @@ class SampleVectorFromRaster:
         print(f"Sampling {gdf.shape[0]} points from {len(raster_files_selection)} raster files...")
         for raster_file in raster_files_selection:
             print(f"Sampling raster values from {str(raster_file)}...", end=" ")
-            df = self._d2r_sampling(raster_file, gdf, varname, config["variable"][varname]["nan_value"])
+            df = self._d2r_sampling(raster_file, gdf, varname, nan_value=config["variable"][varname]["nan_value"], crs=crs)
             print("Done.")
             df_list.append(df)
 
         # concatenate all the sampled values
         final_df_concat = pd.concat(df_list, ignore_index=True, axis=0)
-        print(f"\n---\nSampling complete. Final DataFrame shape: {final_df_concat.shape}.\nHead:\n{final_df_concat.head()}\n")
+
+        # final checks
+        # assert that lantern_id does not contain NaN values
+        if final_df_concat["lantern_id"].isnull().sum() != 0:
+            print(f"\n#########\n[WARNING]: Found {final_df_concat["lantern_id"].isnull().sum()} NaN values in 'lantern_id' column. This means that values cannot be reliably assigned to stations!\n#########")
+
+        print(f"\nSampling complete. Final DataFrame shape: {final_df_concat.shape}.\nHead:\n{final_df_concat.head()}\n")
         
         return final_df_concat
 
     @classmethod
-    def _d2r_sampling(self, raster_path: Path, multipoint_gdf: gpd.GeoDataFrame, varname: str, nan_value : int=-9999) -> pd.DataFrame:
+    def _d2r_sampling(self, raster_path: Path, multipoint_gdf: gpd.GeoDataFrame, varname: str, nan_value: int=-9999, crs: int=25832) -> pd.DataFrame:
         """
         Sample raster values from a multipoint file.
         Specific to the D2R project, not intended for general use.
@@ -112,6 +119,7 @@ class SampleVectorFromRaster:
             multipoint_path (str|Path): Path to the multipoint file.
             varname (str): Name of the variable to sample.
             nan_value (int) [default=-9999]: Real NaN value in the raster file.
+            crs (int) [default=25832]: EPSG code of the coordinate reference system.
 
         Returns:
             gpd.GeoDataFrame: A GeoDataFrame with the sampled values.
@@ -124,11 +132,11 @@ class SampleVectorFromRaster:
             | 3          | 2021-01-01T00:00:00Z | UTCI    | 32.0 | /path.tif  |
             | ...        | ...                  | ...     | ...  | ...        |
             |------------|----------------------|---------|------|------------|
-            lantern_id: ID of the lantern - taken from the multipoint file (LeuchtenNr). # TODO: Will be changed to "NeueLeuNr" which is a consistent ID.
-            datetime: Date and time of the raster file in ISO format.
-            varname: Name of the variable being sampled.
-            val: Sampled value from the raster file.
-            filename: Name of to the raster file.
+            lantern_id (int): ID of the lantern - taken from the multipoint file (LeuchtenNr). # TODO: Will be changed to "NeueLeuNr" which is a consistent ID.
+            datetime (str): Date and time of the raster file in ISO format.
+            varname (str): Name of the variable being sampled.
+            val (float): Sampled value from the raster file.
+            filename (str): Name of to the raster file.
 
         """
         # create and populate a new dataframe to store the sampled values
@@ -139,6 +147,7 @@ class SampleVectorFromRaster:
         
         # raster sampling
         with rio.open(raster_path) as src:
+            assert src.crs == crs, f"[ERROR]: CRS of the raster file ({src.crs}) does not match the CRS of the vector file ({crs}). Aborting."
             # sample raster values
             coord_list = [(x, y) for x, y in zip(multipoint_gdf.geometry.x, multipoint_gdf.geometry.y)]
             final_df["val"] = [x for x in src.sample(coord_list)]
@@ -154,7 +163,7 @@ class SampleVectorFromRaster:
         return final_df
     
     @classmethod
-    def generic_sample(self, raster_path: str|Path, vector_gdf: str|Path) -> pd.DataFrame:
+    def generic_sample_single(self, raster_path: str|Path, vector_gdf: str|Path) -> pd.DataFrame:
         """
         Generic sampling function to sample raster values from a vector file.
         Values are placed in lists to allow for multiple bands in the raster file.
@@ -172,15 +181,22 @@ class SampleVectorFromRaster:
             | [30.0] |
             | [31.0] |
             | [32.0] |
+            | ...    |
+            |--------|
+            val (list): Sampled value from the raster file. Written as a list to allow for multiple bands in the raster file.
         """
         # prepare sampling vector file
         try: gdf = gpd.read_file(vector_gdf)
         except Exception as e: raise Exception(f"Error reading geometry file: {e}")
-        gdf.dropna(subset=["geometry"], inplace=True) # optional: drop rows with missing geometries
+        gdf.dropna(subset=["geometry"], inplace=True)
+        crs = gdf.crs
 
+        # create a new dataframe to store the sampled values
         final_df = pd.DataFrame(index=range(len(gdf)))
         
+        # raster sampling
         with rio.open(raster_path) as src:
+            assert src.crs == crs, f"[ERROR]: CRS of the raster file ({src.crs}) does not match the CRS of the vector file ({crs}). Aborting."
             coord_list = [(x, y) for x, y in zip(gdf.geometry.x, gdf.geometry.y)]
             final_df["val"] = [x for x in src.sample(coord_list)]
         
@@ -197,3 +213,17 @@ if __name__ == "__main__":
     df_concat = pd.concat([df_utci, df_mrt], ignore_index=True, axis=0)
     print(f"Final concatenated DataFrame shape: {df_concat.shape}\nHead:\n{df_concat.head()}\n")
     df_concat.to_csv("output.csv", index=False)
+
+# # parser:
+# if __name__ == "__main__":
+#     import argparse
+
+#     parser = argparse.ArgumentParser(description="Sample raster values from a vector file to a GeoDataFrame.")
+#     parser.add_argument("varname", type=str, help="Name of the variable to sample.")
+#     parser.add_argument("geometry_path", type=str, help="Path to the vector file.")
+#     parser.add_argument("start_date", type=str, help="Start date of the time period to sample.")
+#     parser.add_argument("end_date", type=str, help="End date of the time period to sample.")
+#     args = parser.parse_args()
+
+#     df = SampleVectorFromRaster.sample(args.varname, args.geometry_path, args.start_date, args.end_date)
+#     df.to_csv("output_parse.csv", index=False)
