@@ -102,7 +102,8 @@ class SampleVectorFromRaster:
         # final checks
         # assert that lantern_id does not contain NaN values
         if final_df_concat["lantern_id"].isnull().sum() != 0:
-            print(f"\n#########\n[WARNING]: Found {final_df_concat["lantern_id"].isnull().sum()} NaN values in 'lantern_id' column. This means that values cannot be reliably assigned to stations!\n#########")
+            print(f"\n#########\n[WARNING]: Found {final_df_concat['lantern_id'].isnull().sum()} NaN values in 'lantern_id' column. This means that values cannot be reliably assigned to stations!\n[Action taken]: Setting NaN values to 0.\n#########\n")
+            final_df_concat["lantern_id"] = final_df_concat["lantern_id"].fillna(0).astype(int)
 
         print(f"\nSampling complete. Final DataFrame shape: {final_df_concat.shape}.\nHead:\n{final_df_concat.head()}\n")
         
@@ -141,6 +142,8 @@ class SampleVectorFromRaster:
         """
         # create and populate a new dataframe to store the sampled values
         final_df = pd.DataFrame(index=range(len(multipoint_gdf)))
+        # all NaN values are replaced with 0 and the content is cast to int
+        # TODO: Discuss if this is the correct approach - setting missing lantern IDs to 0
         final_df["lantern_id"] = multipoint_gdf["LeuchtenNr"]
         final_df["datetime"] = datetime.strptime(raster_path.stem.split("_")[4] + raster_path.stem.split("_")[5] + raster_path.stem.split("_")[6], "%Y%j%H").isoformat() + "Z"
         final_df["varname"] = varname
@@ -156,7 +159,7 @@ class SampleVectorFromRaster:
             # check for nan values (default determined by arg) and print sum warning
             nan_values = final_df[final_df["val"] == nan_value]
             if len(nan_values) > 0:
-                print(f"\n[WARNING]: Found {len(nan_values)} NaN values (literal: {nan_value}) in raster file '{raster_path}'. No action taken - continuing...", end=" ")
+                print(f"\n[WARNING]: Found {len(nan_values)} NaN/0 values in raster file '{raster_path}'. No action taken - continuing...", end=" ")
 
         final_df["filename"] = str(raster_path.stem)
 
@@ -207,23 +210,23 @@ class SampleVectorFromRaster:
         return final_df
 
 
-if __name__ == "__main__":
-    df_utci = SampleVectorFromRaster.sample("UTCI", "/home/kraasbx5/network_loc_20240405.geojson", "20240801", "20240801")
-    df_mrt = SampleVectorFromRaster.sample("MRT", "/home/kraasbx5/network_loc_20240405.geojson", "20240801", "20240801")
-    df_concat = pd.concat([df_utci, df_mrt], ignore_index=True, axis=0)
-    print(f"Final concatenated DataFrame shape: {df_concat.shape}\nHead:\n{df_concat.head()}\n")
-    df_concat.to_csv("output.csv", index=False)
-
-# # parser:
 # if __name__ == "__main__":
-#     import argparse
+#     df_utci = SampleVectorFromRaster.sample("UTCI", "/home/kraasbx5/network_loc_20240405.geojson", "20240801", "20240801")
+#     df_mrt = SampleVectorFromRaster.sample("MRT", "/home/kraasbx5/network_loc_20240405.geojson", "20240801", "20240801")
+#     df_concat = pd.concat([df_utci, df_mrt], ignore_index=True, axis=0)
+#     print(f"Final concatenated DataFrame shape: {df_concat.shape}\nHead:\n{df_concat.head()}\n")
+#     df_concat.to_csv("output.csv", index=False)
 
-#     parser = argparse.ArgumentParser(description="Sample raster values from a vector file to a GeoDataFrame.")
-#     parser.add_argument("varname", type=str, help="Name of the variable to sample.")
-#     parser.add_argument("geometry_path", type=str, help="Path to the vector file.")
-#     parser.add_argument("start_date", type=str, help="Start date of the time period to sample.")
-#     parser.add_argument("end_date", type=str, help="End date of the time period to sample.")
-#     args = parser.parse_args()
+# parser:
+if __name__ == "__main__":
+    import argparse
 
-#     df = SampleVectorFromRaster.sample(args.varname, args.geometry_path, args.start_date, args.end_date)
-#     df.to_csv("output_parse.csv", index=False)
+    parser = argparse.ArgumentParser(description="Sample raster values from a vector file to a .csv file.")
+    parser.add_argument("varname", type=str, help="Name of the variable to sample.")
+    parser.add_argument("geometry_path", type=str, help="Path to the vector file.")
+    parser.add_argument("start_date", type=str, help="Start date of the time period to sample.")
+    parser.add_argument("end_date", type=str, help="End date of the time period to sample.")
+    args = parser.parse_args()
+
+    df = SampleVectorFromRaster.sample(args.varname, args.geometry_path, args.start_date, args.end_date)
+    df.to_csv("sample_raster_output.csv", index=False)
