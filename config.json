@@ -2,11 +2,13 @@
 	"variable":{
 		"UTCI": {
 			"dirpath": "/data/d2r/dynamic_data/UTCI",
-			"filename_mask": "UTCI_pytherm_3m_v0.6.0_[YEAR]_[DOY]_[HOUR].tif"
+			"filename_mask": ".*_.*_.*_.*_[YEAR]_[DOY]_[HOUR].tif",
+			"nan_value": -9999
 		},
 		"MRT": {
 			"dirpath": "/data/d2r/dynamic_data/MRT",
-			"filename_mask": "DO_Tmrt_3m_v0.6.0_[YEAR]_[DOY]_[HOUR].tif"
+			"filename_mask": ".*_.*_.*_.*_[YEAR]_[DOY]_[HOUR].tif",
+			"nan_value": -9999			
 		}
 	}
 }
