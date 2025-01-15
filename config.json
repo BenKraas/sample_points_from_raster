@@ -10,5 +10,6 @@
 			"filename_mask": ".*_.*_.*_.*_[YEAR]_[DOY]_[HOUR].tif",
 			"nan_value": -9999			
 		}
-	}
+	},
+	"multipoint_sample_file": "DOES NOT WORK YET: /data/d2r/static_data/multipoint_sample.geojson"
 }
