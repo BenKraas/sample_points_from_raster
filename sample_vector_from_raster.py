@@ -67,6 +67,7 @@ class SampleVectorFromRaster:
         # start_date and end_date to DateTime objects (YYYYMMDDD)
         start_date = datetime.strptime(start_date, "%Y%m%d")
         end_date = datetime.strptime(end_date, "%Y%m%d").replace(hour=23, minute=59, second=59) # set end_date to end of day
+        assert start_date <= end_date, f"[ERROR]: Start date ({start_date}) is after end date ({end_date}). Aborting."
 
         # get all raster files in the directory in the time period
         print(f"Starting sampling for variable '{varname}' in time period {start_date} to {end_date}...")
@@ -100,10 +101,10 @@ class SampleVectorFromRaster:
         final_df_concat = pd.concat(df_list, ignore_index=True, axis=0)
 
         # final checks
-        # assert that lantern_id does not contain NaN values
-        if final_df_concat["lantern_id"].isnull().sum() != 0:
-            print(f"\n#########\n[WARNING]: Found {final_df_concat['lantern_id'].isnull().sum()} NaN values in 'lantern_id' column. This means that values cannot be reliably assigned to stations!\n[Action taken]: Setting NaN values to 0.\n#########\n")
-            final_df_concat["lantern_id"] = final_df_concat["lantern_id"].fillna(0).astype(int)
+        # assert that location_id does not contain NaN values
+        if final_df_concat["location_id"].isnull().sum() != 0:
+            print(f"\n#########\n[WARNING]: Found {final_df_concat['location_id'].isnull().sum()} NaN values in 'location_id' column. This means that values cannot be reliably assigned to stations!\n[Action taken]: Setting NaN values to 0.\n#########\n")
+            final_df_concat["location_id"] = final_df_concat["location_id"].fillna(0).astype(int)
 
         print(f"\nSampling complete. Final DataFrame shape: {final_df_concat.shape}.\nHead:\n{final_df_concat.head()}\n")
         
@@ -126,14 +127,14 @@ class SampleVectorFromRaster:
             gpd.GeoDataFrame: A GeoDataFrame with the sampled values.
 
         Data structure of the GeoDataFrame:
-            | lantern_id | datetime             | varname | val  | filename   |
+            | location_id | datetime             | varname | val  | filename   |
             |------------|----------------------|---------|------|------------|
-            | 1          | 2021-01-01T00:00:00Z | UTCI    | 30.0 | raster.tif |
-            | 2          | 2021-01-01T00:00:00Z | UTCI    | 31.0 | raster.tif |
-            | 3          | 2021-01-01T00:00:00Z | UTCI    | 32.0 | /path.tif  |
+            | DOX...     | 2021-01-01T00:00:00Z | UTCI    | 30.0 | raster.tif |
+            | DOX...     | 2021-01-01T00:00:00Z | UTCI    | 31.0 | raster.tif |
+            | DOX...     | 2021-01-01T00:00:00Z | UTCI    | 32.0 | /path.tif  |
             | ...        | ...                  | ...     | ...  | ...        |
             |------------|----------------------|---------|------|------------|
-            lantern_id (int): ID of the lantern - taken from the multipoint file (LeuchtenNr). # TODO: Will be changed to "NeueLeuNr" which is a consistent ID.
+            location_id (str): ID of the location - taken from the multipoint file (ID)
             datetime (str): Date and time of the raster file in ISO format.
             varname (str): Name of the variable being sampled.
             val (float): Sampled value from the raster file.
@@ -144,7 +145,7 @@ class SampleVectorFromRaster:
         final_df = pd.DataFrame(index=range(len(multipoint_gdf)))
         # all NaN values are replaced with 0 and the content is cast to int
         # TODO: Discuss if this is the correct approach - setting missing lantern IDs to 0
-        final_df["lantern_id"] = multipoint_gdf["LeuchtenNr"]
+        final_df["location_id"] = multipoint_gdf["ID"]
         final_df["datetime"] = datetime.strptime(raster_path.stem.split("_")[4] + raster_path.stem.split("_")[5] + raster_path.stem.split("_")[6], "%Y%j%H").isoformat() + "Z"
         final_df["varname"] = varname
         
